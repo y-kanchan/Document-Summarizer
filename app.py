@@ -1,6 +1,6 @@
 """
-Document Summarizer using NLP — Enhanced Engine v2
-TextRank + TF-IDF + MMR for local summarization.
+DocumentLens NLP Summarizer — Enhanced Engine v2
+TextRank + TF-IDF + MMR for local; Claude AI for premium mode.
 """
 
 from flask import Flask, request, jsonify, render_template
@@ -189,7 +189,59 @@ def format_summary(sentences: list) -> str:
         paragraphs.append(' '.join(cleaned[i:i+3]))
     return '\n\n'.join(paragraphs)
 
-# Claude AI Summarizer removal - Pure Local NLP Engine
+# ── Claude AI Summarizer ───────────────────────────────────────────────────
+
+def claude_summarize(text: str, ratio: float = 0.30, api_key: str = '') -> dict:
+    import urllib.request, urllib.error
+
+    length_hint = ("short and concise (1–2 tight paragraphs)" if ratio <= 0.2 else
+                   "medium length (3–4 well-developed paragraphs)" if ratio <= 0.4 else
+                   "comprehensive (5–6 detailed paragraphs)")
+
+    prompt = (
+        "You are a world-class document summarizer. Produce a high-quality, "
+        "grammatically flawless, meaningful summary of the document below.\n\n"
+        "STRICT RULES:\n"
+        "1. Write in clear, flowing prose — NO bullet points, NO headings, NO lists.\n"
+        "2. Capture all key ideas, arguments, facts, and conclusions.\n"
+        "3. Every sentence must be grammatically correct with perfect punctuation.\n"
+        "4. Paragraphs must flow naturally — use transition words.\n"
+        "5. Do NOT copy sentences verbatim — synthesise and paraphrase.\n"
+        "6. Do NOT add your own opinions or facts not in the document.\n"
+        f"7. Target length: {length_hint}.\n"
+        "8. Output ONLY the summary — no preamble, no labels.\n\n"
+        f"DOCUMENT:\n{text[:14000]}\n\nSUMMARY:"
+    )
+
+    payload = json.dumps({
+        "model": "claude-sonnet-4-20250514",
+        "max_tokens": 1200,
+        "messages": [{"role": "user", "content": prompt}]
+    }).encode('utf-8')
+
+    req = urllib.request.Request(
+        "https://api.anthropic.com/v1/messages",
+        data=payload,
+        headers={
+            "Content-Type": "application/json",
+            "x-api-key": api_key,
+            "anthropic-version": "2023-06-01"
+        },
+        method="POST"
+    )
+
+    with urllib.request.urlopen(req, timeout=45) as resp:
+        result = json.loads(resp.read().decode('utf-8'))
+
+    summary = result['content'][0]['text'].strip()
+    return {
+        "summary": summary,
+        "original_sentences": len(sent_tokenize(text)),
+        "summary_sentences": len(sent_tokenize(summary)),
+        "compression_ratio": round(len(summary) / max(len(text), 1), 3),
+        "keywords": extract_keywords(text),
+        "method": "claude-ai",
+    }
 
 # ── Keywords (RAKE-style) ──────────────────────────────────────────────────
 
@@ -260,6 +312,7 @@ def index():
 
 @app.route('/api/summarize', methods=['POST'])
 def summarize():
+    import urllib.error
     data = request.get_json()
     if not data or 'text' not in data:
         return jsonify({'error': 'No text provided'}), 400
@@ -270,12 +323,22 @@ def summarize():
     if len(text) > 60000:
         return jsonify({'error': 'Text too long (max 60,000 chars).'}), 400
 
-    ratio = max(0.10, min(0.70, float(data.get('ratio', 0.30))))
+    ratio   = max(0.10, min(0.70, float(data.get('ratio', 0.30))))
+    api_key = data.get('api_key', '').strip()
+    mode    = data.get('mode', 'local')
+    warning = None
 
     try:
-        result = local_summarize(text, ratio=ratio)
-    except Exception as e:
-        return jsonify({'error': f'Summarization failed: {str(e)}'}), 500
+        if mode == 'ai' and api_key:
+            result = claude_summarize(text, ratio=ratio, api_key=api_key)
+        else:
+            result = local_summarize(text, ratio=ratio)
+    except (urllib.error.URLError, urllib.error.HTTPError, Exception) as e:
+        if mode == 'ai':
+            result  = local_summarize(text, ratio=ratio)
+            warning = f'AI unavailable ({type(e).__name__}), used local NLP.'
+        else:
+            return jsonify({'error': f'Summarization failed: {str(e)}'}), 500
 
     stats = analyze_text(text)
     resp = {
@@ -290,6 +353,8 @@ def summarize():
         },
         'keywords': result['keywords'],
     }
+    if warning:
+        resp['warning'] = warning
     return jsonify(resp)
 
 @app.route('/api/keywords', methods=['POST'])
@@ -307,5 +372,5 @@ def analyze():
     return jsonify(analyze_text(data['text']))
 
 if __name__ == '__main__':
-    print("Document Summarizer using NLP - http://127.0.0.1:5000")
+    print("🚀  DocumentLens v2 — http://127.0.0.1:5000")
     app.run(debug=True, host='0.0.0.0', port=5000)
