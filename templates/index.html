@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Document Summarizer using NLP</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@300;400;500&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,300&display=swap" rel="stylesheet"/>
+  <style>
+    :root {
+      --ink:     #0f0e0c;
+      --paper:   #f4f0e8;
+      --cream:   #ede8dc;
+      --rust:    #c84b2f;
+      --rust-lt: #e8654a;
+      --sage:    #4a6741;
+      --gold:    #c9922a;
+      --blue:    #2a5fc9;
+      --muted:   #7a756a;
+      --border:  #ccc8be;
+      --mono:    'DM Mono', monospace;
+      --serif:   'DM Serif Display', serif;
+      --sans:    'DM Sans', sans-serif;
+      --shadow:  4px 4px 0 #0f0e0c20;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: var(--sans); background: var(--paper); color: var(--ink); min-height: 100vh; line-height: 1.6; }
+    body::before {
+      content: ''; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
+    }
+
+    /* Header */
+    header { position: relative; z-index: 1; border-bottom: 2px solid var(--ink); padding: 1.1rem 2rem; display: flex; align-items: center; gap: 1.5rem; background: var(--paper); }
+    .brand { font-family: var(--serif); font-size: 1.55rem; letter-spacing: -0.02em; }
+    .brand span { color: var(--rust); font-style: italic; }
+    .tagline { font-family: var(--mono); font-size: 0.66rem; color: var(--muted); letter-spacing: 0.1em; text-transform: uppercase; }
+    .header-right { margin-left: auto; display: flex; gap: 0.5rem; align-items: center; }
+    .badge { font-family: var(--mono); font-size: 0.62rem; letter-spacing: 0.08em; text-transform: uppercase; border: 1.5px solid var(--rust); color: var(--rust); padding: 3px 9px; }
+
+    /* Layout */
+    main { position: relative; z-index: 1; max-width: 1320px; margin: 0 auto; padding: 1.8rem 1.8rem 4rem; display: grid; grid-template-columns: 1fr 1fr; gap: 1.8rem; }
+    @media (max-width: 860px) { main { grid-template-columns: 1fr; } }
+
+    /* Mode bar */
+    .mode-bar { grid-column: 1 / -1; display: flex; align-items: center; gap: 1rem; border: 2px solid var(--ink); background: white; padding: 0.8rem 1.2rem; box-shadow: var(--shadow); }
+    .mode-label { font-family: var(--mono); font-size: 0.65rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+    .mode-toggle { display: flex; border: 1.5px solid var(--border); overflow: hidden; }
+    .mode-btn { font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.08em; text-transform: uppercase; padding: 5px 16px; background: white; border: none; cursor: pointer; color: var(--muted); transition: background 0.15s, color 0.15s; }
+    .mode-btn.active { background: var(--ink); color: white; }
+    .api-key-wrap { flex: 1; display: flex; align-items: center; gap: 0.6rem; }
+    .api-key-input { flex: 1; font-family: var(--mono); font-size: 0.76rem; padding: 5px 10px; border: 1.5px solid var(--border); background: #fdfbf7; color: var(--ink); outline: none; transition: border-color 0.15s; }
+    .api-key-input:focus { border-color: var(--blue); }
+    .api-key-input::placeholder { color: var(--muted); font-style: italic; }
+    .ai-note { font-family: var(--mono); font-size: 0.6rem; color: var(--blue); letter-spacing: 0.05em; }
+    #aiKeySection { display: none; }
+
+    /* Panel */
+    .panel { border: 2px solid var(--ink); background: white; box-shadow: var(--shadow); }
+    .panel-header { border-bottom: 2px solid var(--ink); padding: 0.65rem 1.1rem; display: flex; align-items: center; gap: 0.6rem; background: var(--cream); }
+    .panel-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .panel-label { font-family: var(--mono); font-size: 0.65rem; letter-spacing: 0.12em; text-transform: uppercase; font-weight: 500; }
+    .panel-body { padding: 1.1rem; }
+
+    /* Textarea */
+    textarea { width: 100%; min-height: 320px; border: 1.5px solid var(--border); background: #fdfbf7; font-family: var(--sans); font-size: 0.9rem; line-height: 1.75; padding: 0.9rem 1rem; resize: vertical; color: var(--ink); outline: none; transition: border-color 0.15s; }
+    textarea:focus { border-color: var(--rust); }
+    textarea::placeholder { color: var(--muted); font-style: italic; }
+    .char-count { margin-top: 0.4rem; font-family: var(--mono); font-size: 0.65rem; color: var(--muted); text-align: right; }
+
+    /* Samples */
+    .samples { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.7rem; align-items: center; }
+    .sample-lbl { font-family: var(--mono); font-size: 0.58rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+    .sample-btn { font-family: var(--mono); font-size: 0.6rem; letter-spacing: 0.07em; text-transform: uppercase; padding: 4px 10px; border: 1.5px solid var(--border); background: var(--cream); cursor: pointer; color: var(--muted); transition: border-color 0.15s, color 0.15s; }
+    .sample-btn:hover { border-color: var(--rust); color: var(--rust); }
+
+    /* Controls */
+    .ctrl-row { display: grid; grid-template-columns: 1fr; gap: 0.7rem; margin-top: 0.9rem; }
+    .ctrl-group label { display: block; font-family: var(--mono); font-size: 0.63rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin-bottom: 0.35rem; }
+    .slider-wrap { display: flex; align-items: center; gap: 0.8rem; }
+    input[type=range] { flex: 1; accent-color: var(--rust); height: 4px; }
+    .slider-val { font-family: var(--mono); font-size: 0.85rem; font-weight: 500; width: 2.8rem; text-align: right; color: var(--rust); }
+    .slider-hint { font-family: var(--mono); font-size: 0.58rem; color: var(--muted); margin-top: 2px; }
+
+    /* Divider */
+    .divider { border: none; border-top: 1px dashed var(--border); margin: 0.9rem 0; }
+
+    /* Buttons */
+    .btn { font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.1em; text-transform: uppercase; font-weight: 500; padding: 0.6rem 1.3rem; border: 2px solid var(--ink); background: var(--ink); color: white; cursor: pointer; transition: transform 0.1s, box-shadow 0.1s; white-space: nowrap; display: inline-flex; align-items: center; gap: 0.4rem; }
+    .btn:hover { transform: translate(-2px,-2px); box-shadow: 4px 4px 0 var(--ink); }
+    .btn:active { transform: translate(0,0); box-shadow: none; }
+    .btn-outline { background: white; color: var(--ink); }
+    .btn-rust { background: var(--rust); border-color: var(--rust); }
+    .btn-rust:hover { box-shadow: 4px 4px 0 var(--rust-lt); }
+    .actions { margin-top: 0.8rem; display: flex; gap: 0.6rem; flex-wrap: wrap; }
+    .spinner { width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.4); border-top-color: white; border-radius: 50%; animation: spin 0.6s linear infinite; display: none; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Error / Warning */
+    .error-box { display: none; background: #fdf0ec; border: 1.5px solid var(--rust); padding: 0.65rem 1rem; font-family: var(--mono); font-size: 0.75rem; color: var(--rust); margin-top: 0.7rem; }
+    .warn-box { display: none; background: #fdf8ec; border: 1.5px solid var(--gold); padding: 0.55rem 1rem; font-family: var(--mono); font-size: 0.7rem; color: var(--gold); margin-top: 0.5rem; }
+
+    /* Summary output */
+    .progress-bar { height: 3px; background: var(--border); overflow: hidden; margin-bottom: 0.9rem; }
+    .progress-fill { height: 100%; background: var(--rust); width: 0; transition: width 0.45s ease; }
+    .method-row { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.7rem; }
+    .method-pill { font-family: var(--mono); font-size: 0.58rem; letter-spacing: 0.08em; text-transform: uppercase; border: 1px solid var(--border); color: var(--muted); padding: 2px 8px; }
+    .method-pill.ai { border-color: var(--blue); color: var(--blue); }
+
+    /* The summary itself */
+    .summary-output {
+      font-family: var(--sans);
+      font-size: 0.94rem;
+      line-height: 1.85;
+      color: var(--ink);
+      font-weight: 300;
+      min-height: 200px;
+      white-space: pre-wrap;        /* honour \n\n paragraph breaks */
+      word-spacing: 0.02em;
+      letter-spacing: 0.01em;
+    }
+    .summary-placeholder { color: var(--muted); font-style: italic; font-size: 0.87rem; white-space: normal; }
+
+    /* Stats */
+    .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.55rem; margin-top: 0.9rem; }
+    .stat-card { border: 1.5px solid var(--border); padding: 0.55rem 0.75rem; background: var(--cream); }
+    .stat-lbl { font-family: var(--mono); font-size: 0.57rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); display: block; margin-bottom: 2px; }
+    .stat-val { font-family: var(--mono); font-size: 1.05rem; font-weight: 500; color: var(--ink); }
+    .stat-val.accent { color: var(--rust); }
+
+    /* Keywords */
+    .kw-section { margin-top: 0.9rem; }
+    .kw-title { font-family: var(--mono); font-size: 0.62rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin-bottom: 0.45rem; }
+    .kw-cloud { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+    .kw-tag { font-family: var(--mono); font-size: 0.68rem; padding: 3px 9px; background: var(--cream); border: 1.5px solid var(--border); color: var(--ink); }
+    .kw-tag.top { border-color: var(--rust); color: var(--rust); background: #fdf0ec; }
+
+    /* Readability badge */
+    .rb { display: inline-block; font-family: var(--mono); font-size: 0.6rem; letter-spacing: 0.08em; text-transform: uppercase; padding: 2px 8px; border: 1.5px solid; }
+    .rb-easy { border-color: var(--sage); color: var(--sage); }
+    .rb-moderate { border-color: var(--gold); color: var(--gold); }
+    .rb-difficult { border-color: var(--rust); color: var(--rust); }
+
+    /* Toast */
+    .toast { position: fixed; bottom: 2rem; right: 2rem; background: var(--ink); color: white; font-family: var(--mono); font-size: 0.7rem; padding: 0.65rem 1.2rem; letter-spacing: 0.08em; text-transform: uppercase; z-index: 100; opacity: 0; transform: translateY(10px); transition: opacity 0.2s, transform 0.2s; pointer-events: none; }
+    .toast.show { opacity: 1; transform: translateY(0); }
+
+    /* Footer */
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="brand">Document Summarizer using <span>NLP</span></div>
+  <div class="tagline">NLP Summarization Engine · v2.0</div>
+  <div class="header-right">
+    <div class="badge">TextRank + TF-IDF + MMR</div>
+  </div>
+</header>
+
+<main>
+
+  <!-- Mode Bar -->
+  <!-- Engine Note -->
+  <div style="grid-column: 1 / -1; font-family:var(--mono); font-size:0.65rem; color:var(--muted); letter-spacing:0.05em; border: 2px solid var(--ink); background: white; padding: 0.8rem 1.2rem; box-shadow: var(--shadow);">
+    Engine: Pure Local NLP (TextRank + TF-IDF + MMR) · Runs fully offline · No API key needed
+  </div>
+
+  <!-- Input Panel -->
+  <section>
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-dot" style="background:var(--rust)"></div>
+        <span class="panel-label">Input Document</span>
+      </div>
+      <div class="panel-body">
+        <textarea id="inputText"
+          placeholder="Paste your article, research paper, report, or any long-form text here…&#10;&#10;Minimum 80 characters. Up to 60,000 characters supported."
+          oninput="updateCharCount()"></textarea>
+        <div class="char-count"><span id="charCount">0</span> / 60,000</div>
+
+        <div class="samples">
+          <span class="sample-lbl">Samples →</span>
+          <button class="sample-btn" onclick="loadSample('science')">🔬 Science</button>
+          <button class="sample-btn" onclick="loadSample('tech')">💻 Technology</button>
+          <button class="sample-btn" onclick="loadSample('history')">📜 History</button>
+          <button class="sample-btn" onclick="loadSample('climate')">🌍 Climate</button>
+        </div>
+
+        <hr class="divider"/>
+
+        <div class="ctrl-row">
+          <div class="ctrl-group">
+            <label>Summary Length — <span id="ratioLabel">Balanced (30%)</span></label>
+            <div class="slider-wrap">
+              <input type="range" id="ratioSlider" min="10" max="60" value="30"
+                oninput="updateRatioLabel(this.value)"/>
+              <span class="slider-val" id="ratioVal">30%</span>
+            </div>
+            <div class="slider-hint">↑ lower = shorter · higher = more complete</div>
+          </div>
+        </div>
+
+        <div class="actions">
+          <button class="btn btn-rust" onclick="summarize()">
+            <span id="btnText">▶ Summarize</span>
+            <div class="spinner" id="spinner"></div>
+          </button>
+          <button class="btn btn-outline" onclick="clearAll()">✕ Clear</button>
+          <button class="btn btn-outline" onclick="copyInput()">⎘ Copy</button>
+        </div>
+
+        <div class="error-box" id="errorBox"></div>
+        <div class="warn-box"  id="warnBox"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Output Panel -->
+  <section>
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-dot" style="background:var(--sage)"></div>
+        <span class="panel-label">Summary &amp; Analysis</span>
+      </div>
+      <div class="panel-body">
+        <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+
+        <div class="method-row" id="methodRow" style="display:none">
+          <div class="method-pill" id="methodPill"></div>
+          <div style="font-family:var(--mono);font-size:0.58rem;color:var(--muted)" id="compressInfo"></div>
+        </div>
+
+        <div class="summary-output" id="summaryOutput">
+          <span class="summary-placeholder">Your summary will appear here after processing.</span>
+        </div>
+
+        <div class="actions" id="summaryActions" style="display:none; margin-top:0.9rem;">
+          <button class="btn btn-outline" onclick="copySummary()">⎘ Copy Summary</button>
+          <button class="btn btn-outline" onclick="downloadSummary()">↓ Download .txt</button>
+        </div>
+
+        <hr class="divider"/>
+
+        <div class="stats-grid">
+          <div class="stat-card"><span class="stat-lbl">Words</span><span class="stat-val" id="sWords">—</span></div>
+          <div class="stat-card"><span class="stat-lbl">Sentences</span><span class="stat-val" id="sSents">—</span></div>
+          <div class="stat-card"><span class="stat-lbl">Compressed To</span><span class="stat-val accent" id="sComp">—</span></div>
+          <div class="stat-card"><span class="stat-lbl">Unique Words</span><span class="stat-val" id="sUniq">—</span></div>
+          <div class="stat-card"><span class="stat-lbl">Read Time</span><span class="stat-val" id="sRead">—</span></div>
+          <div class="stat-card"><span class="stat-lbl">Readability</span><span class="stat-val" id="sRdbl">—</span></div>
+        </div>
+
+        <div class="kw-section" id="kwSection" style="display:none">
+          <div class="kw-title">Key Terms</div>
+          <div class="kw-cloud" id="kwCloud"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<!-- Footer Removed -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ── Sample texts ─────────────────────────────────────────────────────────────
+const SAMPLES = {
+  science: `Photosynthesis is the process by which plants, algae, and some bacteria convert light energy into chemical energy stored as glucose. This fundamental biological process occurs in two main stages: the light-dependent reactions and the light-independent reactions, commonly known as the Calvin cycle. During the light-dependent reactions, chlorophyll and other pigments in the thylakoid membranes absorb sunlight. This captured energy is used to split water molecules, releasing oxygen as a byproduct and generating ATP and NADPH, which are energy-carrying molecules. These energy carriers then power the Calvin cycle occurring in the stroma of the chloroplast. In the Calvin cycle, carbon dioxide drawn from the atmosphere is fixed into organic molecules through a series of carefully orchestrated enzyme-catalyzed reactions. The enzyme RuBisCO plays a central role in incorporating CO2 into three-carbon compounds. Through subsequent biochemical reactions, these compounds are reduced using the ATP and NADPH generated during the light reactions, ultimately forming glyceraldehyde-3-phosphate, a key precursor for glucose synthesis and other organic molecules essential for plant growth. The efficiency of photosynthesis is influenced by multiple environmental factors including light intensity, carbon dioxide concentration, temperature, and water availability. Climate change is altering these parameters globally, prompting scientists to study how different plant species may adapt or struggle. Meanwhile, researchers are actively working to improve photosynthetic efficiency in crops through bioengineering and selective breeding to address pressing global food security challenges.`,
+
+  tech: `Artificial intelligence has profoundly transformed the software development landscape over the past decade. Machine learning algorithms now power a vast range of applications, from personalised recommendation engines and fraud detection systems to autonomous vehicles and clinical diagnosis tools. The emergence of large language models represents a paradigm shift in natural language processing, enabling machines to generate coherent text, write functional code, answer nuanced questions, and engage in sophisticated reasoning. Deep learning, a subset of machine learning inspired by the layered architecture of the human brain, uses neural networks with many hidden layers to learn complex hierarchical representations from raw data. Training these networks requires enormous datasets and significant computational power, typically delivered through specialised graphics processing units or tensor processing units operating across distributed computing clusters. Cloud computing has dramatically democratised access to these resources, allowing startups and academic researchers worldwide to experiment with state-of-the-art AI models without prohibitive upfront infrastructure costs. The integration of AI-powered coding assistants into software development workflows has sparked vigorous debate about the evolving role of software engineers. While some analysts warn of significant job displacement, many practitioners argue that AI tools act as powerful force multipliers, freeing developers to focus on higher-level architectural thinking and creative problem-solving. Crucially, ethical questions around algorithmic bias, transparency, data privacy, and accountability remain central challenges as AI systems become embedded in high-stakes decision-making across healthcare, finance, criminal justice, and democratic governance.`,
+
+  history: `The Renaissance was a sweeping cultural and intellectual movement that originated in the Italian city-states during the fourteenth century and gradually diffused throughout Europe over the following two centuries. This transformative period marked a profound departure from the prevailing medieval worldview, characterised by a vigorous revival of interest in classical Greek and Roman literature, philosophy, art, and science. Historians trace the movement's emergence partly to the catastrophic impact of the Black Death, which decimated roughly one-third of Europe's population and forced survivors to confront fundamental questions about human existence, the role of the Church, and the meaning of life. Wealthy merchant families and ecclesiastical patrons in cities like Florence, Venice, Milan, and Rome became indispensable supporters of Renaissance culture, commissioning monumental works of art and architecture that endured for centuries. The Medici family of Florence wielded particular influence, providing financial support and political patronage to towering figures such as Botticelli, Leonardo da Vinci, and Michelangelo. These masters revolutionised visual art by developing and refining techniques including linear perspective, chiaroscuro shading, and anatomically accurate representations of the human form derived from direct observation and dissection. The invention of the printing press by Johannes Gutenberg around 1440 proved a watershed moment, dramatically accelerating the diffusion of Renaissance ideas by reducing the cost of books and making literacy accessible to a growing middle class. Humanist scholars, notably Erasmus of Rotterdam and Thomas More in England, championed a renewed emphasis on human dignity, individual reason, secular achievement, and civic virtue alongside traditional Christian piety. The Renaissance ultimately provided crucial intellectual and cultural foundations for the Scientific Revolution and the Protestant Reformation, reshaping the trajectory of Western civilisation in ways that continue to reverberate today.`,
+
+  climate: `Climate change represents one of the most complex and consequential challenges confronting humanity in the twenty-first century. Driven primarily by the accumulation of greenhouse gases in the atmosphere resulting from the combustion of fossil fuels, deforestation, and industrial agriculture, global average surface temperatures have already risen approximately 1.2 degrees Celsius above pre-industrial levels. Scientists at the Intergovernmental Panel on Climate Change warn that without rapid and far-reaching reductions in emissions, warming could exceed 1.5 or even 2 degrees Celsius by mid-century, triggering severe and potentially irreversible impacts on natural and human systems. The consequences of unchecked warming are already becoming visible across the planet. Arctic sea ice is retreating at unprecedented rates, contributing to rising sea levels that threaten coastal communities and small island nations. More frequent and intense extreme weather events, including hurricanes, heatwaves, droughts, and floods, are causing billions of dollars in economic damages annually and displacing millions of people. Coral reef ecosystems, which support roughly a quarter of all marine species, are bleaching and dying as ocean temperatures and acidity increase. Addressing climate change requires a fundamental transformation of the global energy system away from fossil fuels and towards renewable sources such as solar, wind, and geothermal power. It also demands innovations in energy storage, grid infrastructure, sustainable agriculture, and carbon removal technologies. Critically, the transition must be managed equitably, recognising that the communities least responsible for historical emissions often bear the greatest burden of climate impacts and must receive adequate financial and technological support to adapt.`
+};
+
+function loadSample(k) {
+  document.getElementById('inputText').value = SAMPLES[k];
+  updateCharCount();
+}
+
+function updateCharCount() {
+  const n = document.getElementById('inputText').value.length;
+  const el = document.getElementById('charCount');
+  el.textContent = n.toLocaleString();
+  el.style.color = n > 54000 ? 'var(--rust)' : 'var(--muted)';
+}
+
+function updateRatioLabel(v) {
+  v = parseInt(v);
+  document.getElementById('ratioVal').textContent = v + '%';
+  const lbl = v <= 15 ? 'Brief (' + v + '%)' :
+               v <= 25 ? 'Short (' + v + '%)' :
+               v <= 35 ? 'Balanced (' + v + '%)' :
+               v <= 50 ? 'Detailed (' + v + '%)' :
+                         'Comprehensive (' + v + '%)';
+  document.getElementById('ratioLabel').textContent = lbl;
+}
+
+// Mode switching removed - Engine is fixed to local NLP
+
+// ── Summarize ───────────────────────────────────────────────────────────────
+async function summarize() {
+  const text = document.getElementById('inputText').value.trim();
+  const ratio = parseInt(document.getElementById('ratioSlider').value) / 100;
+
+  hideMsg('errorBox'); hideMsg('warnBox');
+  if (!text) { showError('Please paste some text first.'); return; }
+
+  // Loading
+  const btn = document.getElementById('btnText');
+  const spin = document.getElementById('spinner');
+  btn.style.display = 'none'; spin.style.display = 'block';
+  animateProgress(0, 75);
+
+  try {
+    const res = await fetch('/api/summarize', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, ratio })
+    });
+    const data = await res.json();
+    animateProgress(75, 100);
+
+    if (!res.ok || !data.success) { showError(data.error || 'An error occurred.'); return; }
+    if (data.warning) showWarn(data.warning);
+
+    renderResults(data);
+  } catch (e) {
+    showError('Network error. Is the server running on port 5000?');
+  } finally {
+    btn.style.display = 'inline'; spin.style.display = 'none';
+  }
+}
+
+function renderResults(data) {
+  // Summary text (preserves paragraph breaks)
+  const out = document.getElementById('summaryOutput');
+  out.textContent = data.summary;   // textContent preserves \n\n as-is with white-space:pre-wrap
+
+  // Method pill
+  const pill = document.getElementById('methodPill');
+  pill.textContent = '⚙ Local NLP (TextRank + TF-IDF + MMR)';
+  pill.className = 'method-pill';
+
+  const ss = data.summary_stats;
+  document.getElementById('compressInfo').textContent =
+    ss.original_sentences + ' → ' + ss.summary_sentences + ' sentences';
+  document.getElementById('methodRow').style.display = 'flex';
+
+  // Stats
+  const s = data.stats;
+  document.getElementById('sWords').textContent = s.word_count.toLocaleString();
+  document.getElementById('sSents').textContent = s.sentence_count;
+  document.getElementById('sComp').textContent  = Math.round(ss.compression_ratio * 100) + '%';
+  document.getElementById('sUniq').textContent  = s.unique_words.toLocaleString();
+  document.getElementById('sRead').textContent  = s.read_time_min + ' min';
+
+  const lvl = s.readability_level.toLowerCase();
+  document.getElementById('sRdbl').innerHTML =
+    `<span class="rb rb-${lvl}">${s.readability_level}</span>`;
+
+  // Keywords
+  const cloud = document.getElementById('kwCloud');
+  cloud.innerHTML = data.keywords.map((k, i) =>
+    `<span class="kw-tag${i < 3 ? ' top' : ''}">${k}</span>`
+  ).join('');
+  document.getElementById('kwSection').style.display = 'block';
+  document.getElementById('summaryActions').style.display = 'flex';
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+function showError(msg) {
+  const el = document.getElementById('errorBox');
+  el.textContent = '⚠ ' + msg; el.style.display = 'block';
+}
+function showWarn(msg) {
+  const el = document.getElementById('warnBox');
+  el.textContent = '⚠ ' + msg; el.style.display = 'block';
+}
+function hideMsg(id) { document.getElementById(id).style.display = 'none'; }
+
+function animateProgress(from, to) {
+  const f = document.getElementById('progressFill');
+  f.style.width = from + '%';
+  setTimeout(() => f.style.width = to + '%', 50);
+  if (to === 100) setTimeout(() => f.style.width = '0', 1000);
+}
+
+function clearAll() {
+  document.getElementById('inputText').value = '';
+  document.getElementById('summaryOutput').innerHTML =
+    '<span class="summary-placeholder">Your summary will appear here after processing.</span>';
+  document.getElementById('methodRow').style.display = 'none';
+  document.getElementById('kwSection').style.display = 'none';
+  document.getElementById('summaryActions').style.display = 'none';
+  hideMsg('errorBox'); hideMsg('warnBox');
+  ['sWords','sSents','sComp','sUniq','sRead'].forEach(id => document.getElementById(id).textContent = '—');
+  document.getElementById('sRdbl').textContent = '—';
+  updateCharCount();
+}
+
+function copyInput() { navigator.clipboard.writeText(document.getElementById('inputText').value); showToast('Copied!'); }
+function copySummary() { navigator.clipboard.writeText(document.getElementById('summaryOutput').textContent); showToast('Summary copied!'); }
+function downloadSummary() {
+  const text = document.getElementById('summaryOutput').textContent;
+  const a = Object.assign(document.createElement('a'), {
+    href: URL.createObjectURL(new Blob([text], {type:'text/plain'})), download: 'summary.txt'
+  });
+  a.click(); showToast('Downloaded!');
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2000);
+}
+
+document.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') summarize();
+});
+</script>
+</body>
+</html>
