@@ -4,8 +4,12 @@ TextRank + TF-IDF + MMR for local summarization.
 """
 
 from flask import Flask, request, jsonify, render_template
-import nltk, re, math, os, json
+import nltk, re, math, os, json, io
 from collections import Counter
+import pypdf
+import docx
+import pptx
+from werkzeug.utils import secure_filename
 
 # ── NLTK bootstrap ─────────────────────────────────────────────────────────
 for pkg in ['punkt', 'punkt_tab', 'stopwords', 'averaged_perceptron_tagger',
@@ -20,6 +24,32 @@ from nltk.corpus import stopwords
 
 app = Flask(__name__)
 STOP_WORDS = set(stopwords.words('english'))
+
+# ── File Extraction ──────────────────────────────────────────────────────────
+
+def extract_text_from_file(file_stream, filename):
+    ext = filename.rsplit('.', 1)[-1].lower()
+    text = ""
+    
+    if ext == 'pdf':
+        reader = pypdf.PdfReader(file_stream)
+        for page in reader.pages:
+            content = page.extract_text()
+            if content:
+                text += content + "\n"
+    elif ext == 'docx':
+        doc = docx.Document(file_stream)
+        text = "\n".join([para.text for para in doc.paragraphs])
+    elif ext in ['pptx']:
+        prs = pptx.Presentation(file_stream)
+        for slide in prs.slides:
+            for shape in slide.shapes:
+                if hasattr(shape, "text"):
+                    text += shape.text + "\n"
+    elif ext == 'txt':
+        text = file_stream.read().decode('utf-8', errors='ignore')
+    
+    return text.strip()
 
 # ── Preprocessing ──────────────────────────────────────────────────────────
 
@@ -305,6 +335,33 @@ def analyze():
     if not data or 'text' not in data:
         return jsonify({'error': 'No text provided'}), 400
     return jsonify(analyze_text(data['text']))
+
+@app.route('/api/upload', methods=['POST'])
+def upload_file():
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file part'}), 400
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'error': 'No selected file'}), 400
+    
+    ext = file.filename.rsplit('.', 1)[-1].lower()
+    if ext not in ['pdf', 'docx', 'pptx', 'txt']:
+        return jsonify({'error': f'Unsupported file type: {ext}'}), 400
+
+    try:
+        file_stream = io.BytesIO(file.read())
+        text = extract_text_from_file(file_stream, file.filename)
+        
+        if not text:
+            return jsonify({'error': 'Could not extract text from file or document is empty.'}), 400
+            
+        return jsonify({
+            'success': True,
+            'text': text,
+            'filename': file.filename
+        })
+    except Exception as e:
+        return jsonify({'error': f'File processing failed: {str(e)}'}), 500
 
 if __name__ == '__main__':
     print("Document Summarizer using NLP - http://127.0.0.1:5000")

@@ -180,11 +180,8 @@
         <div class="char-count"><span id="charCount">0</span> / 60,000</div>
 
         <div class="samples">
-          <span class="sample-lbl">Samples →</span>
-          <button class="sample-btn" onclick="loadSample('science')">🔬 Science</button>
-          <button class="sample-btn" onclick="loadSample('tech')">💻 Technology</button>
-          <button class="sample-btn" onclick="loadSample('history')">📜 History</button>
-          <button class="sample-btn" onclick="loadSample('climate')">🌍 Climate</button>
+          <button class="sample-btn" style="border-color:var(--blue); color:var(--blue); width: 100%; justify-content: center; font-size: 0.75rem; padding: 8px;" onclick="document.getElementById('fileInput').click()">📁 Click here to Upload Document (PDF, DOCX, PPTX, TXT)</button>
+          <input type="file" id="fileInput" accept=".pdf,.docx,.pptx,.txt" style="display:none" onchange="handleFileUpload(this)">
         </div>
 
         <hr class="divider"/>
@@ -265,20 +262,48 @@
 <div class="toast" id="toast"></div>
 
 <script>
-// ── Sample texts ─────────────────────────────────────────────────────────────
-const SAMPLES = {
-  science: `Photosynthesis is the process by which plants, algae, and some bacteria convert light energy into chemical energy stored as glucose. This fundamental biological process occurs in two main stages: the light-dependent reactions and the light-independent reactions, commonly known as the Calvin cycle. During the light-dependent reactions, chlorophyll and other pigments in the thylakoid membranes absorb sunlight. This captured energy is used to split water molecules, releasing oxygen as a byproduct and generating ATP and NADPH, which are energy-carrying molecules. These energy carriers then power the Calvin cycle occurring in the stroma of the chloroplast. In the Calvin cycle, carbon dioxide drawn from the atmosphere is fixed into organic molecules through a series of carefully orchestrated enzyme-catalyzed reactions. The enzyme RuBisCO plays a central role in incorporating CO2 into three-carbon compounds. Through subsequent biochemical reactions, these compounds are reduced using the ATP and NADPH generated during the light reactions, ultimately forming glyceraldehyde-3-phosphate, a key precursor for glucose synthesis and other organic molecules essential for plant growth. The efficiency of photosynthesis is influenced by multiple environmental factors including light intensity, carbon dioxide concentration, temperature, and water availability. Climate change is altering these parameters globally, prompting scientists to study how different plant species may adapt or struggle. Meanwhile, researchers are actively working to improve photosynthetic efficiency in crops through bioengineering and selective breeding to address pressing global food security challenges.`,
+// ── Document Upload ─────────────────────────────────────────────────────────────
 
-  tech: `Artificial intelligence has profoundly transformed the software development landscape over the past decade. Machine learning algorithms now power a vast range of applications, from personalised recommendation engines and fraud detection systems to autonomous vehicles and clinical diagnosis tools. The emergence of large language models represents a paradigm shift in natural language processing, enabling machines to generate coherent text, write functional code, answer nuanced questions, and engage in sophisticated reasoning. Deep learning, a subset of machine learning inspired by the layered architecture of the human brain, uses neural networks with many hidden layers to learn complex hierarchical representations from raw data. Training these networks requires enormous datasets and significant computational power, typically delivered through specialised graphics processing units or tensor processing units operating across distributed computing clusters. Cloud computing has dramatically democratised access to these resources, allowing startups and academic researchers worldwide to experiment with state-of-the-art AI models without prohibitive upfront infrastructure costs. The integration of AI-powered coding assistants into software development workflows has sparked vigorous debate about the evolving role of software engineers. While some analysts warn of significant job displacement, many practitioners argue that AI tools act as powerful force multipliers, freeing developers to focus on higher-level architectural thinking and creative problem-solving. Crucially, ethical questions around algorithmic bias, transparency, data privacy, and accountability remain central challenges as AI systems become embedded in high-stakes decision-making across healthcare, finance, criminal justice, and democratic governance.`,
+async function handleFileUpload(input) {
+  const file = input.files[0];
+  if (!file) return;
 
-  history: `The Renaissance was a sweeping cultural and intellectual movement that originated in the Italian city-states during the fourteenth century and gradually diffused throughout Europe over the following two centuries. This transformative period marked a profound departure from the prevailing medieval worldview, characterised by a vigorous revival of interest in classical Greek and Roman literature, philosophy, art, and science. Historians trace the movement's emergence partly to the catastrophic impact of the Black Death, which decimated roughly one-third of Europe's population and forced survivors to confront fundamental questions about human existence, the role of the Church, and the meaning of life. Wealthy merchant families and ecclesiastical patrons in cities like Florence, Venice, Milan, and Rome became indispensable supporters of Renaissance culture, commissioning monumental works of art and architecture that endured for centuries. The Medici family of Florence wielded particular influence, providing financial support and political patronage to towering figures such as Botticelli, Leonardo da Vinci, and Michelangelo. These masters revolutionised visual art by developing and refining techniques including linear perspective, chiaroscuro shading, and anatomically accurate representations of the human form derived from direct observation and dissection. The invention of the printing press by Johannes Gutenberg around 1440 proved a watershed moment, dramatically accelerating the diffusion of Renaissance ideas by reducing the cost of books and making literacy accessible to a growing middle class. Humanist scholars, notably Erasmus of Rotterdam and Thomas More in England, championed a renewed emphasis on human dignity, individual reason, secular achievement, and civic virtue alongside traditional Christian piety. The Renaissance ultimately provided crucial intellectual and cultural foundations for the Scientific Revolution and the Protestant Reformation, reshaping the trajectory of Western civilisation in ways that continue to reverberate today.`,
+  // Validate size (max 5MB roughly)
+  if (file.size > 5 * 1024 * 1024) {
+    showError('File too large (max 5MB).');
+    input.value = '';
+    return;
+  }
 
-  climate: `Climate change represents one of the most complex and consequential challenges confronting humanity in the twenty-first century. Driven primarily by the accumulation of greenhouse gases in the atmosphere resulting from the combustion of fossil fuels, deforestation, and industrial agriculture, global average surface temperatures have already risen approximately 1.2 degrees Celsius above pre-industrial levels. Scientists at the Intergovernmental Panel on Climate Change warn that without rapid and far-reaching reductions in emissions, warming could exceed 1.5 or even 2 degrees Celsius by mid-century, triggering severe and potentially irreversible impacts on natural and human systems. The consequences of unchecked warming are already becoming visible across the planet. Arctic sea ice is retreating at unprecedented rates, contributing to rising sea levels that threaten coastal communities and small island nations. More frequent and intense extreme weather events, including hurricanes, heatwaves, droughts, and floods, are causing billions of dollars in economic damages annually and displacing millions of people. Coral reef ecosystems, which support roughly a quarter of all marine species, are bleaching and dying as ocean temperatures and acidity increase. Addressing climate change requires a fundamental transformation of the global energy system away from fossil fuels and towards renewable sources such as solar, wind, and geothermal power. It also demands innovations in energy storage, grid infrastructure, sustainable agriculture, and carbon removal technologies. Critically, the transition must be managed equitably, recognising that the communities least responsible for historical emissions often bear the greatest burden of climate impacts and must receive adequate financial and technological support to adapt.`
-};
+  showToast('Extracting text...');
+  hideMsg('errorBox'); hideMsg('warnBox');
 
-function loadSample(k) {
-  document.getElementById('inputText').value = SAMPLES[k];
-  updateCharCount();
+  const formData = new FormData();
+  formData.append('file', file);
+
+  try {
+    const res = await fetch('/api/upload', {
+      method: 'POST',
+      body: formData
+    });
+    const data = await res.json();
+    
+    if (!res.ok) {
+      showError(data.error || 'Upload failed.');
+      return;
+    }
+
+    document.getElementById('inputText').value = data.text;
+    updateCharCount();
+    showToast('Document loaded!');
+    
+    // Automatically trigger summarization
+    setTimeout(summarize, 500);
+  } catch (e) {
+    showError('Network error during upload.');
+  } finally {
+    input.value = ''; // Reset input
+  }
 }
 
 function updateCharCount() {
