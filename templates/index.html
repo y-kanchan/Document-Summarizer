@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Document Summarizer using NLP</title>
+  <title>DocumentLens — NLP Summarizer</title>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@300;400;500&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,300&display=swap" rel="stylesheet"/>
   <style>
@@ -146,12 +146,13 @@
     .toast.show { opacity: 1; transform: translateY(0); }
 
     /* Footer */
+    footer { position: relative; z-index: 1; border-top: 1px solid var(--border); text-align: center; padding: 1rem; font-family: var(--mono); font-size: 0.6rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
   </style>
 </head>
 <body>
 
 <header>
-  <div class="brand">Document Summarizer using <span>NLP</span></div>
+  <div class="brand">Document<span>Lens</span></div>
   <div class="tagline">NLP Summarization Engine · v2.0</div>
   <div class="header-right">
     <div class="badge">TextRank + TF-IDF + MMR</div>
@@ -161,9 +162,19 @@
 <main>
 
   <!-- Mode Bar -->
-  <!-- Engine Note -->
-  <div style="grid-column: 1 / -1; font-family:var(--mono); font-size:0.65rem; color:var(--muted); letter-spacing:0.05em; border: 2px solid var(--ink); background: white; padding: 0.8rem 1.2rem; box-shadow: var(--shadow);">
-    Engine: Pure Local NLP (TextRank + TF-IDF + MMR) · Runs fully offline · No API key needed
+  <div class="mode-bar">
+    <span class="mode-label">Engine →</span>
+    <div class="mode-toggle">
+      <button class="mode-btn active" id="modeLocal" onclick="setMode('local')">⚙ Local NLP</button>
+      <button class="mode-btn" id="modeAI" onclick="setMode('ai')">✦ Claude AI</button>
+    </div>
+    <div id="aiKeySection" class="api-key-wrap">
+      <input class="api-key-input" id="apiKey" type="password" placeholder="sk-ant-… Anthropic API key (optional)"/>
+      <span class="ai-note">Produces perfect prose summaries</span>
+    </div>
+    <div id="localNote" style="font-family:var(--mono);font-size:0.6rem;color:var(--muted);letter-spacing:0.05em;">
+      Runs fully offline · No API key needed
+    </div>
   </div>
 
   <!-- Input Panel -->
@@ -258,7 +269,7 @@
 
 </main>
 
-<!-- Footer Removed -->
+<footer>DocumentLens v2 · TextRank · TF-IDF · MMR · Claude AI · Flask · No Docker</footer>
 <div class="toast" id="toast"></div>
 
 <script>
@@ -324,12 +335,21 @@ function updateRatioLabel(v) {
   document.getElementById('ratioLabel').textContent = lbl;
 }
 
-// Mode switching removed - Engine is fixed to local NLP
+// ── Mode switching ──────────────────────────────────────────────────────────
+let currentMode = 'local';
+function setMode(m) {
+  currentMode = m;
+  document.getElementById('modeLocal').classList.toggle('active', m === 'local');
+  document.getElementById('modeAI').classList.toggle('active', m === 'ai');
+  document.getElementById('aiKeySection').style.display = m === 'ai' ? 'flex' : 'none';
+  document.getElementById('localNote').style.display   = m === 'local' ? 'block' : 'none';
+}
 
 // ── Summarize ───────────────────────────────────────────────────────────────
 async function summarize() {
   const text = document.getElementById('inputText').value.trim();
   const ratio = parseInt(document.getElementById('ratioSlider').value) / 100;
+  const apiKey = document.getElementById('apiKey').value.trim();
 
   hideMsg('errorBox'); hideMsg('warnBox');
   if (!text) { showError('Please paste some text first.'); return; }
@@ -344,7 +364,7 @@ async function summarize() {
     const res = await fetch('/api/summarize', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, ratio })
+      body: JSON.stringify({ text, ratio, mode: currentMode, api_key: apiKey })
     });
     const data = await res.json();
     animateProgress(75, 100);
@@ -366,9 +386,10 @@ function renderResults(data) {
   out.textContent = data.summary;   // textContent preserves \n\n as-is with white-space:pre-wrap
 
   // Method pill
+  const isAI = data.summary_stats.method === 'claude-ai';
   const pill = document.getElementById('methodPill');
-  pill.textContent = '⚙ Local NLP (TextRank + TF-IDF + MMR)';
-  pill.className = 'method-pill';
+  pill.textContent = isAI ? '✦ Claude AI' : '⚙ Local NLP (TextRank + TF-IDF + MMR)';
+  pill.className = 'method-pill' + (isAI ? ' ai' : '');
 
   const ss = data.summary_stats;
   document.getElementById('compressInfo').textContent =
